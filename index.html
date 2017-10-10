@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta name="description" content="Heart">
+    <meta charset="utf-8">
+    <title>Shadow Map</title>
+	<script src = "Main.js"></script>
+	<script src = "objectArrays.js"></script>
+	<script src = "Human_heart.js"></script>
+	<script src = "Box.js"></script>
+	<script src = "MVP.js"></script>
+	<script src = "shadersSetup.js"></script>
+	<script src = "framebufferSetup.js"></script>
+	<script src = "normalProgramSetup.js"></script>
+	<script src = "shadowProgramSetup.js"></script>
+	<script src = "drawShadowObject.js"></script>
+	<script src = "drawNormalObject.js"></script>
+	<script src = "FBOClearAndPrep.js"></script>
+	<script src = "createModel.js"></script>
+	<script src = "createDrawObject.js"></script>
+	
+    <script id="vs_shadow" type="not-js">
+    attribute vec3 aPos;
+    uniform mat4 uMVP;
+	  
+    void main(void) {
+		gl_Position = uMVP * vec4(aPos, 1.0);
+    }
+    </script>
+
+    <script id="fs_shadow" type="not-js">
+	precision mediump float;
+	
+    void main(void) {
+		const vec4 bitShift = vec4(1.0, 256.0, 256.0 * 256.0, 256.0 * 256.0 * 256.0);
+        const vec4 bitMask = vec4(1.0/256.0, 1.0/256.0, 1.0/256.0, 0.0);
+        vec4 rgbaDepth = fract(gl_FragCoord.z * bitShift);
+        rgbaDepth -= rgbaDepth.gbaa * bitMask;
+        gl_FragColor = rgbaDepth;
+    }
+	  
+    </script>	
+	
+    <script id="vs" type="not-js">
+    attribute vec4 aPos;
+	attribute vec3 vnormal;
+    uniform mat4 uMVP;
+	uniform mat4 u_MvpMatrixFromLight;
+	uniform mat4 proj;
+	uniform mat4 view;
+	uniform mat4 model;
+    varying vec4 v_PositionFromLight;
+	varying vec3 outNormal;
+	varying vec3 outPos;
+	
+    void main(void) {
+		gl_Position = uMVP * aPos;//vec4(aPos, 1.0);
+		v_PositionFromLight = u_MvpMatrixFromLight * aPos;
+		outPos =  (view * model * aPos).xyz;
+        outNormal = normalize(view * model * vec4(vnormal,0.0)).xyz;
+    }
+    </script>
+
+    <script id="fs" type="not-js">
+	precision highp float;
+	uniform sampler2D u_ShadowMap;
+	uniform vec3 cubecolor;
+	uniform vec3 fakecolor;
+	varying vec3 outNormal;
+    varying vec3 outPos;
+    varying vec4 v_PositionFromLight;
+	uniform bool uOffscreen;
+	
+    float unpackDepth(const in vec4 rgbaDepth) {
+        const vec4 bitShift = vec4(1.0, 1.0/256.0, 1.0/(256.0 * 256.0), 1.0/(256.0*256.0*256.0));
+        float depth = dot(rgbaDepth, bitShift);
+        return depth;
+    }
+	float pulse(float val, float dst) {
+		return floor(mod(val*dst,1.0)+.5);
+	}
+    void main(void) {
+		if (uOffscreen) {
+			gl_FragColor = vec4(fakecolor, 1.0);
+			return;
+		}
+		vec3 shadowCoord = (v_PositionFromLight.xyz/v_PositionFromLight.w)/2.0 + 0.5;
+        vec4 rgbaDepth = texture2D(u_ShadowMap, shadowCoord.xy);
+        float depth = unpackDepth(rgbaDepth);
+        float visibility = (shadowCoord.z > depth + 0.0015) ? 0.7 : 1.0;
+	
+		vec3 color = vec3(1, pulse(outPos.y,10.0),1);
+        vec3 n = normalize(outNormal);
+        vec3 e = normalize(-outPos);
+        vec3 l = normalize(v_PositionFromLight.xyz);
+        vec3 h = normalize(e+l);
+        float diffuse = .5 + .5*abs(dot(outNormal, v_PositionFromLight.xyz));
+        float specular = pow(max(dot(n,h),0.0),2.0);
+        vec3 outColor1 = cubecolor * diffuse;
+        vec3 outColor = cubecolor * specular;
+	
+        gl_FragColor = vec4(outColor *visibility, 1.0);
+    }
+	  
+    </script>
+</head>
+
+<body onload="start()">
+<canvas id="mycanvas" width="700" height="700"></canvas><br>
+Rotate around x-axis: <input id="slider1" type="range" min="-10" max="20" step=".1"/>
+zLight: <input id="slider2" type="range" min="-10" max="20" step=".1"/>
+<script src="http://graphics.cs.wisc.edu/JS/twgl-full.min.js"></script>
+</body>
+
+</html>
